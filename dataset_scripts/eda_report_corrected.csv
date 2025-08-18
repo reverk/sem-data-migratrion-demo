@@ -1,0 +1,9 @@
+Column,Null_Values,Empty_Values,ERROR_Values,UNKNOWN_Values,Total_Problematic,Problematic_Percentage
+Transaction ID,0,0,0,0,0,0.0
+Item,333,0,292,344,969,9.69
+Quantity,138,0,170,171,479,4.79
+Price Per Unit,179,0,190,164,533,5.33
+Total Spent,173,0,164,165,502,5.0200000000000005
+Payment Method,2579,0,306,293,3178,31.78
+Location,3265,0,358,338,3961,39.61
+Transaction Date,159,0,142,159,460,4.6
