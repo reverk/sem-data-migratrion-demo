@@ -7,6 +7,7 @@ use App\Models\PaymentMethod;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use MongoDB\Laravel\Connection;
 
@@ -26,6 +27,7 @@ class CopyDataToMongoDB extends Command
     protected $signature = 'data:copy-to-mongodb 
                             {--batch-size=1000 : Number of records to process at once}
                             {--denormalize : Store denormalized data (embed relationships)}
+                            {--migrate : Run MongoDB migrations before copying data}
                             {--dry-run : Show what would be copied without actually copying}';
 
     /**
@@ -33,7 +35,7 @@ class CopyDataToMongoDB extends Command
      *
      * @var string
      */
-    protected $description = 'Copy all data from MySQL to MongoDB';
+    protected $description = 'Copy all data from MySQL to MongoDB (optionally run migrations first)';
 
     /**
      * Execute the console command.
@@ -47,6 +49,7 @@ class CopyDataToMongoDB extends Command
         $isDryRun = $this->option('dry-run');
         $batchSize = (int) $this->option('batch-size');
         $denormalize = $this->option('denormalize');
+        $runMigrations = $this->option('migrate');
 
         if ($isDryRun) {
             $this->warn('🔍 DRY RUN MODE - No data will be actually copied');
@@ -61,6 +64,15 @@ class CopyDataToMongoDB extends Command
         }
 
         try {
+            // Run MongoDB migrations if requested
+            if ($runMigrations && !$isDryRun) {
+                if (!$this->runMongoDBMigrations()) {
+                    return 1;
+                }
+            } elseif ($runMigrations && $isDryRun) {
+                $this->info('🔍 DRY RUN: Would run MongoDB migrations');
+            }
+
             // Get counts from MySQL
             $counts = $this->getMySQLCounts();
             $this->displayDataSummary($counts);
@@ -74,6 +86,16 @@ class CopyDataToMongoDB extends Command
                 if (!$this->confirm('Do you want to proceed with the data migration?')) {
                     $this->info('Migration cancelled');
                     return 0;
+                }
+
+                // Check for existing data and warn user
+                $mongoCount = DB::connection('mongodb')->getCollection('transactions')->count();
+                if ($mongoCount > 0) {
+                    $this->warn("⚠️  Found {$mongoCount} existing documents in MongoDB transactions collection");
+                    if (!$this->confirm('This will clear existing data. Continue?')) {
+                        $this->info('Migration cancelled');
+                        return 0;
+                    }
                 }
 
                 // Clear MongoDB collections first
@@ -394,6 +416,7 @@ class CopyDataToMongoDB extends Command
                     if (!$isDryRun) {
                         DB::connection('mongodb')->getCollection('transactions')->insertOne([
                             '_id' => $transaction->transaction_id,
+                            'transaction_id' => $transaction->transaction_id, // Add this field for the unique index
                             'item_id' => $transaction->item_id,
                             'payment_method_id' => $transaction->payment_method_id,
                             'quantity' => (float) $transaction->quantity,
@@ -442,6 +465,7 @@ class CopyDataToMongoDB extends Command
                     if (!$isDryRun) {
                         $document = [
                             '_id' => $transaction->transaction_id,
+                            'transaction_id' => $transaction->transaction_id, // Add this field for consistency
                             'quantity' => (float) $transaction->quantity,
                             'total_spent' => (float) $transaction->total_spent,
                             'location' => $transaction->location,
@@ -527,6 +551,41 @@ class CopyDataToMongoDB extends Command
 
         if (!$isDryRun && $totalCopied > 0) {
             $this->info("🎉 Successfully copied {$totalCopied} records to MongoDB!");
+        }
+    }
+
+    /**
+     * Run MongoDB migrations
+     */
+    private function runMongoDBMigrations(): bool
+    {
+        $this->info('📝 Running MongoDB migrations...');
+
+        try {
+            $exitCode = Artisan::call('migrate', [
+                '--database' => 'mongodb',
+                '--force' => true, // Don't ask for confirmation in production
+            ]);
+
+            if ($exitCode === 0) {
+                $this->info('✅ MongoDB migrations completed successfully');
+                
+                // Display migration output if there's any
+                $output = Artisan::output();
+                if (!empty(trim($output))) {
+                    $this->line($output);
+                }
+                
+                return true;
+            } else {
+                $this->error('❌ MongoDB migrations failed');
+                $this->error(Artisan::output());
+                return false;
+            }
+
+        } catch (\Exception $e) {
+            $this->error("Migration error: " . $e->getMessage());
+            return false;
         }
     }
 }
