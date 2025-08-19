@@ -26,7 +26,6 @@ class MongoTransaction extends Model
      */
     protected $fillable = [
         '_id',
-        'transaction_id',
         'item_id',
         'payment_method_id',
         'quantity',
@@ -45,6 +44,30 @@ class MongoTransaction extends Model
         'total_spent' => 'float',
         'transaction_date' => 'date',
     ];
+
+    /**
+     * Get the transaction_id attribute (maps to _id).
+     */
+    public function getTransactionIdAttribute()
+    {
+        return $this->_id;
+    }
+
+    /**
+     * Set the transaction_id attribute (maps to _id).
+     */
+    public function setTransactionIdAttribute($value)
+    {
+        $this->attributes['_id'] = $value;
+    }
+
+    /**
+     * Scope to query by transaction_id (maps to _id).
+     */
+    public function scopeWhereTransactionId($query, $transactionId)
+    {
+        return $query->where('_id', $transactionId);
+    }
 
     /**
      * Get the item that belongs to this transaction.

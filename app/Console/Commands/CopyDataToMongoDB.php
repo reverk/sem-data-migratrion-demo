@@ -6,6 +6,11 @@ use App\Models\Item;
 use App\Models\PaymentMethod;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\MongoUser;
+use App\Models\MongoItem;
+use App\Models\MongoPaymentMethod;
+use App\Models\MongoTransaction;
+use App\Models\MongoTransactionWithDetails;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -89,13 +94,18 @@ class CopyDataToMongoDB extends Command
                 }
 
                 // Check for existing data and warn user
-                $mongoCount = DB::connection('mongodb')->getCollection('transactions')->count();
-                if ($mongoCount > 0) {
-                    $this->warn("⚠️  Found {$mongoCount} existing documents in MongoDB transactions collection");
-                    if (!$this->confirm('This will clear existing data. Continue?')) {
-                        $this->info('Migration cancelled');
-                        return 0;
+                try {
+                    $mongoCount = MongoTransaction::count();
+                    if ($mongoCount > 0) {
+                        $this->warn("⚠️  Found {$mongoCount} existing documents in MongoDB transactions collection");
+                        if (!$this->confirm('This will drop existing collections and recreate them. Continue?')) {
+                            $this->info('Migration cancelled');
+                            return 0;
+                        }
                     }
+                } catch (\Exception $e) {
+                    // Collection might not exist yet, which is fine
+                    $this->info('📝 MongoDB collections will be created from scratch');
                 }
 
                 // Clear MongoDB collections first
@@ -195,18 +205,27 @@ class CopyDataToMongoDB extends Command
     {
         $this->info('🗑️  Clearing existing MongoDB collections...');
         
-        $collections = ['users', 'items', 'payment_methods', 'transactions', 'transactions_with_details'];
+        $models = [
+            'users' => MongoUser::class,
+            'items' => MongoItem::class,
+            'payment_methods' => MongoPaymentMethod::class,
+            'transactions' => MongoTransaction::class,
+            'transactions_with_details' => MongoTransactionWithDetails::class,
+        ];
         
-        foreach ($collections as $collectionName) {
+        foreach ($models as $collectionName => $modelClass) {
             try {
-                DB::connection('mongodb')->getCollection($collectionName)->deleteMany([]);
+                // Drop the entire collection (including indexes) instead of just truncating
+                $modelClass::raw(function ($collection) {
+                    $collection->drop();
+                });
             } catch (\Exception $e) {
                 // Collection might not exist, which is fine
-                $this->warn("Could not clear collection {$collectionName}: " . $e->getMessage());
+                $this->warn("Could not drop collection {$collectionName}: " . $e->getMessage());
             }
         }
         
-        $this->info('✓ MongoDB collections cleared');
+        $this->info('✓ MongoDB collections dropped (including indexes)');
     }
 
     /**
@@ -280,15 +299,15 @@ class CopyDataToMongoDB extends Command
             foreach ($users as $user) {
                 try {
                     if (!$isDryRun) {
-                        DB::connection('mongodb')->getCollection('users')->insertOne([
+                        MongoUser::create([
                             '_id' => $user->id,
                             'name' => $user->name,
                             'email' => $user->email,
-                            'email_verified_at' => $user->email_verified_at ? $user->email_verified_at->format('Y-m-d H:i:s') : null,
+                            'email_verified_at' => $user->email_verified_at,
                             'password' => $user->password,
                             'remember_token' => $user->remember_token,
-                            'created_at' => $user->created_at ? $user->created_at->format('Y-m-d H:i:s') : null,
-                            'updated_at' => $user->updated_at ? $user->updated_at->format('Y-m-d H:i:s') : null,
+                            'created_at' => $user->created_at,
+                            'updated_at' => $user->updated_at,
                         ]);
                     }
                     $result['copied']++;
@@ -327,12 +346,12 @@ class CopyDataToMongoDB extends Command
             foreach ($items as $item) {
                 try {
                     if (!$isDryRun) {
-                        DB::connection('mongodb')->getCollection('items')->insertOne([
+                        MongoItem::create([
                             '_id' => $item->item_id,
                             'item_name' => $item->item_name,
-                            'price_per_unit' => (float) $item->price_per_unit,
-                            'created_at' => $item->created_at ? $item->created_at->format('Y-m-d H:i:s') : null,
-                            'updated_at' => $item->updated_at ? $item->updated_at->format('Y-m-d H:i:s') : null,
+                            'price_per_unit' => $item->price_per_unit,
+                            'created_at' => $item->created_at,
+                            'updated_at' => $item->updated_at,
                         ]);
                     }
                     $result['copied']++;
@@ -371,11 +390,11 @@ class CopyDataToMongoDB extends Command
             foreach ($paymentMethods as $paymentMethod) {
                 try {
                     if (!$isDryRun) {
-                        DB::connection('mongodb')->getCollection('payment_methods')->insertOne([
+                        MongoPaymentMethod::create([
                             '_id' => $paymentMethod->payment_method_id,
                             'method_name' => $paymentMethod->method_name,
-                            'created_at' => $paymentMethod->created_at ? $paymentMethod->created_at->format('Y-m-d H:i:s') : null,
-                            'updated_at' => $paymentMethod->updated_at ? $paymentMethod->updated_at->format('Y-m-d H:i:s') : null,
+                            'created_at' => $paymentMethod->created_at,
+                            'updated_at' => $paymentMethod->updated_at,
                         ]);
                     }
                     $result['copied']++;
@@ -414,17 +433,16 @@ class CopyDataToMongoDB extends Command
             foreach ($transactions as $transaction) {
                 try {
                     if (!$isDryRun) {
-                        DB::connection('mongodb')->getCollection('transactions')->insertOne([
+                        MongoTransaction::create([
                             '_id' => $transaction->transaction_id,
-                            'transaction_id' => $transaction->transaction_id, // Add this field for the unique index
                             'item_id' => $transaction->item_id,
                             'payment_method_id' => $transaction->payment_method_id,
-                            'quantity' => (float) $transaction->quantity,
-                            'total_spent' => (float) $transaction->total_spent,
+                            'quantity' => $transaction->quantity,
+                            'total_spent' => $transaction->total_spent,
                             'location' => $transaction->location,
-                            'transaction_date' => $transaction->transaction_date ? (string) $transaction->transaction_date : null,
-                            'created_at' => $transaction->created_at ? $transaction->created_at->format('Y-m-d H:i:s') : null,
-                            'updated_at' => $transaction->updated_at ? $transaction->updated_at->format('Y-m-d H:i:s') : null,
+                            'transaction_date' => $transaction->transaction_date,
+                            'created_at' => $transaction->created_at,
+                            'updated_at' => $transaction->updated_at,
                         ]);
                     }
                     $result['copied']++;
@@ -465,13 +483,12 @@ class CopyDataToMongoDB extends Command
                     if (!$isDryRun) {
                         $document = [
                             '_id' => $transaction->transaction_id,
-                            'transaction_id' => $transaction->transaction_id, // Add this field for consistency
-                            'quantity' => (float) $transaction->quantity,
-                            'total_spent' => (float) $transaction->total_spent,
+                            'quantity' => $transaction->quantity,
+                            'total_spent' => $transaction->total_spent,
                             'location' => $transaction->location,
-                            'transaction_date' => $transaction->transaction_date ? (string) $transaction->transaction_date : null,
-                            'created_at' => $transaction->created_at ? $transaction->created_at->format('Y-m-d H:i:s') : null,
-                            'updated_at' => $transaction->updated_at ? $transaction->updated_at->format('Y-m-d H:i:s') : null,
+                            'transaction_date' => $transaction->transaction_date,
+                            'created_at' => $transaction->created_at,
+                            'updated_at' => $transaction->updated_at,
                         ];
 
                         // Embed item data
@@ -479,7 +496,7 @@ class CopyDataToMongoDB extends Command
                             $document['item'] = [
                                 'item_id' => $transaction->item->item_id,
                                 'item_name' => $transaction->item->item_name,
-                                'price_per_unit' => (float) $transaction->item->price_per_unit,
+                                'price_per_unit' => $transaction->item->price_per_unit,
                             ];
                         }
 
@@ -491,7 +508,7 @@ class CopyDataToMongoDB extends Command
                             ];
                         }
 
-                        DB::connection('mongodb')->getCollection('transactions_with_details')->insertOne($document);
+                        MongoTransactionWithDetails::create($document);
                     }
                     $result['copied']++;
                 } catch (\Exception $e) {
