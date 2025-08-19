@@ -10,6 +10,11 @@ class PaymentMethod extends Model
     use HasFactory;
 
     /**
+     * The connection name for the model.
+     */
+    protected $connection = 'mysql';
+
+    /**
      * The primary key associated with the table.
      *
      * @var string
