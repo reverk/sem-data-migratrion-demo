@@ -41,20 +41,20 @@ class ShowMigrationMetrics extends Command
         $this->displayIntermediateStepMetrics();
         $this->newLine();
         
-        $this->displayCompletenessMetrics();
-        $this->newLine();
+        // $this->displayCompletenessMetrics();
+        // $this->newLine();
         
-        $this->displayAccuracyMetrics();
-        $this->newLine();
+        // $this->displayAccuracyMetrics();
+        // $this->newLine();
         
-        $this->displayConsistencyMetrics();
-        $this->newLine();
+        // $this->displayConsistencyMetrics();
+        // $this->newLine();
         
-        $this->displayUniquenessMetrics();
-        $this->newLine();
+        // $this->displayUniquenessMetrics();
+        // $this->newLine();
         
-        $this->displayIntegrityMetrics();
-        $this->newLine();
+        // $this->displayIntegrityMetrics();
+        // $this->newLine();
         
         $this->displaySummary();
     }
@@ -161,7 +161,7 @@ class ShowMigrationMetrics extends Command
         $this->line("• Cleaned records: " . number_format($cleanedCount) . " transactions (from {$cleanedFile})");
         $this->line("• MySQL records: " . number_format($mysqlCount) . " transactions");
         $this->line("• MongoDB normalized: " . number_format($mongoNormalizedCount) . " transactions");
-        $this->line("• MongoDB denormalized: " . number_format($mongoDenormalizedCount) . " transactions");
+        // $this->line("• MongoDB denormalized: " . number_format($mongoDenormalizedCount) . " transactions");
 
         if ($inputCount > 0 && $cleanedCount > 0) {
             $retentionRate = ($cleanedCount / $inputCount) * 100;
@@ -391,7 +391,7 @@ class ShowMigrationMetrics extends Command
 
         $this->line("✅ MySQL migration: " . ($mysqlCount > 0 ? 'COMPLETED' : 'PENDING'));
         $this->line("✅ MongoDB normalized migration: " . ($mongoNormalizedCount > 0 ? 'COMPLETED' : 'PENDING'));
-        $this->line("✅ MongoDB denormalized migration: " . ($mongoDenormalizedCount > 0 ? 'COMPLETED' : 'PENDING'));
+        // $this->line("✅ MongoDB denormalized migration: " . ($mongoDenormalizedCount > 0 ? 'COMPLETED' : 'PENDING'));
         
         $this->newLine();
         $this->line("📊 Final Record Counts:");
