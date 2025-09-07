@@ -169,11 +169,11 @@ class CopyDataToMongoDB extends Command
     private function getMySQLCounts(): array
     {
         return [
-            'users' => User::on('mysql')->count(),
+            // 'users' => User::on('mysql')->count(),
             'items' => Item::on('mysql')->count(),
             'payment_methods' => PaymentMethod::on('mysql')->count(),
             'transactions' => Transaction::on('mysql')->count(),
-            'total' => User::on('mysql')->count() + Item::on('mysql')->count() + 
+            'total' => Item::on('mysql')->count() + 
                       PaymentMethod::on('mysql')->count() + Transaction::on('mysql')->count(),
         ];
     }
@@ -188,7 +188,7 @@ class CopyDataToMongoDB extends Command
         $this->table(
             ['Collection', 'Record Count'],
             [
-                ['Users', number_format($counts['users'])],
+                // ['Users', number_format($counts['users'])],
                 ['Items', number_format($counts['items'])],
                 ['Payment Methods', number_format($counts['payment_methods'])],
                 ['Transactions', number_format($counts['transactions'])],
@@ -206,7 +206,7 @@ class CopyDataToMongoDB extends Command
         $this->info('🗑️  Clearing existing MongoDB collections...');
         
         $models = [
-            'users' => MongoUser::class,
+            // 'users' => MongoUser::class,
             'items' => MongoItem::class,
             'payment_methods' => MongoPaymentMethod::class,
             'transactions' => MongoTransaction::class,
@@ -234,15 +234,15 @@ class CopyDataToMongoDB extends Command
     private function copyDataNormalized(int $batchSize, bool $isDryRun): array
     {
         $result = [
-            'users' => ['copied' => 0, 'errors' => 0],
+            // 'users' => ['copied' => 0, 'errors' => 0],
             'items' => ['copied' => 0, 'errors' => 0],
             'payment_methods' => ['copied' => 0, 'errors' => 0],
             'transactions' => ['copied' => 0, 'errors' => 0],
         ];
 
         // Copy Users
-        $this->info('👥 Copying Users...');
-        $result['users'] = $this->copyUsers($batchSize, $isDryRun);
+        // $this->info('👥 Copying Users...');
+        // $result['users'] = $this->copyUsers($batchSize, $isDryRun);
 
         // Copy Items
         $this->info('📦 Copying Items...');
@@ -265,13 +265,13 @@ class CopyDataToMongoDB extends Command
     private function copyDataDenormalized(int $batchSize, bool $isDryRun): array
     {
         $result = [
-            'users' => ['copied' => 0, 'errors' => 0],
+            // 'users' => ['copied' => 0, 'errors' => 0],
             'transactions_with_details' => ['copied' => 0, 'errors' => 0],
         ];
 
         // Copy Users (still separate as they might not be related to transactions)
-        $this->info('👥 Copying Users...');
-        $result['users'] = $this->copyUsers($batchSize, $isDryRun);
+        // $this->info('👥 Copying Users...');
+        // $result['users'] = $this->copyUsers($batchSize, $isDryRun);
 
         // Copy Transactions with embedded Item and Payment Method data
         $this->info('💰 Copying Transactions with embedded details...');

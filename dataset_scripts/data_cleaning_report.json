@@ -1,0 +1,35 @@
+{
+  "initial_rows": 10000,
+  "operations_performed": [
+    "Replaced ERROR/UNKNOWN/empty values with NaN",
+    "Removed rows with missing Transaction ID",
+    "Inferred missing items from prices and removed unresolvable items",
+    "Fixed invalid quantities by setting to 1",
+    "Filled missing prices and corrected invalid prices using menu",
+    "Recalculated Total Spent for all rows",
+    "Filled missing payment methods with mode (Digital Wallet)",
+    "Filled missing locations with mode (Takeaway)",
+    "Removed rows with missing transaction dates",
+    "Successfully converted dates to datetime format"
+  ],
+  "rows_removed_by_operation": {
+    "missing_transaction_id": 0,
+    "unresolvable_missing_items": 54,
+    "missing_transaction_dates": 457
+  },
+  "values_imputed": {
+    "ERROR_values_replaced": 1622,
+    "UNKNOWN_values_replaced": 1634,
+    "empty_values_replaced": 0,
+    "items_inferred_from_price": 915,
+    "invalid_quantities_fixed": 476,
+    "missing_prices_filled": 479,
+    "payment_methods_filled": 3157,
+    "locations_filled": 3936
+  },
+  "price_corrections": 0,
+  "total_calculations_fixed": 9946,
+  "final_rows": 9489,
+  "total_rows_removed": 511,
+  "data_retention_rate": 94.89
+}

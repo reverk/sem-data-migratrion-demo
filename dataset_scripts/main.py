@@ -95,11 +95,31 @@ def clean_data(df):
     df_clean = df.copy()
     print(f"Starting with {len(df_clean)} rows")
     
+    # Initialize cleaning report dictionary
+    cleaning_report = {
+        'initial_rows': len(df_clean),
+        'operations_performed': [],
+        'rows_removed_by_operation': {},
+        'values_imputed': {},
+        'price_corrections': 0,
+        'total_calculations_fixed': 0
+    }
+    
     # 1. Handle missing values and replace ERROR/UNKNOWN with NaN
     print("\n1. Handling missing and invalid values...")
     
+    # Count problematic values before cleaning
+    error_counts = (df == 'ERROR').sum().sum()
+    unknown_counts = (df == 'UNKNOWN').sum().sum()
+    empty_counts = (df == '').sum().sum()
+    
     # Replace empty strings and problematic values with NaN
     df_clean = df_clean.replace(['', 'ERROR', 'UNKNOWN'], np.nan)
+    
+    cleaning_report['operations_performed'].append('Replaced ERROR/UNKNOWN/empty values with NaN')
+    cleaning_report['values_imputed']['ERROR_values_replaced'] = error_counts
+    cleaning_report['values_imputed']['UNKNOWN_values_replaced'] = unknown_counts
+    cleaning_report['values_imputed']['empty_values_replaced'] = empty_counts
     
     print("Missing values after cleaning:")
     missing_after = df_clean.isnull().sum()
@@ -112,7 +132,11 @@ def clean_data(df):
     rows_before = len(df_clean)
     df_clean = df_clean.dropna(subset=['Transaction ID'])
     rows_after = len(df_clean)
-    print(f"Removed {rows_before - rows_after} rows with missing Transaction ID")
+    rows_removed = rows_before - rows_after
+    print(f"Removed {rows_removed} rows with missing Transaction ID")
+    
+    cleaning_report['operations_performed'].append('Removed rows with missing Transaction ID')
+    cleaning_report['rows_removed_by_operation']['missing_transaction_id'] = rows_removed
     
     # 3. Clean Item column
     print("\n3. Cleaning Item column...")
@@ -122,6 +146,7 @@ def clean_data(df):
     # For missing items, try to infer from price
     # Meaning: If there's menu item, then the price should be in the menu prices
     mask_missing_item = df_clean['Item'].isnull()
+    items_inferred = 0
     if mask_missing_item.sum() > 0:
         print("Attempting to infer missing items from price...")
         for idx in df_clean[mask_missing_item].index:
@@ -132,14 +157,20 @@ def clean_data(df):
                     if price == menu_price:
                         df_clean.loc[idx, 'Item'] = item
                         print(f"  Inferred item '{item}' for row {idx} based on price ${price}")
+                        items_inferred += 1
                         break
                     
     # Remove rows where item is still missing
     rows_before = len(df_clean)
     df_clean = df_clean.dropna(subset=['Item'])
     rows_after = len(df_clean)
+    items_removed = rows_before - rows_after
     if rows_before != rows_after:
-        print(f"Removed {rows_before - rows_after} rows with unresolvable missing items")
+        print(f"Removed {items_removed} rows with unresolvable missing items")
+    
+    cleaning_report['operations_performed'].append('Inferred missing items from prices and removed unresolvable items')
+    cleaning_report['values_imputed']['items_inferred_from_price'] = items_inferred
+    cleaning_report['rows_removed_by_operation']['unresolvable_missing_items'] = items_removed
     
     # 4. Clean numeric columns
     print("\n4. Cleaning numeric columns...")
@@ -147,11 +178,15 @@ def clean_data(df):
     # Clean Quantity
     df_clean['Quantity'] = pd.to_numeric(df_clean['Quantity'], errors='coerce')
     invalid_qty = df_clean['Quantity'].isnull() | (df_clean['Quantity'] <= 0)
-    if invalid_qty.sum() > 0:
-        print(f"Found {invalid_qty.sum()} invalid quantities")
+    invalid_qty_count = invalid_qty.sum()
+    if invalid_qty_count > 0:
+        print(f"Found {invalid_qty_count} invalid quantities")
         # Set invalid quantities to 1 (most common case)
         df_clean.loc[invalid_qty, 'Quantity'] = 1
         print("Set invalid quantities to 1")
+        
+        cleaning_report['operations_performed'].append('Fixed invalid quantities by setting to 1')
+        cleaning_report['values_imputed']['invalid_quantities_fixed'] = invalid_qty_count
     
     # Clean Price Per Unit using menu prices
     print("Cleaning Price Per Unit...")
@@ -159,13 +194,16 @@ def clean_data(df):
     
     # Fill missing prices from menu
     missing_price_mask = df_clean['Price Per Unit'].isnull()
+    prices_filled = 0
     for idx in df_clean[missing_price_mask].index:
         item = df_clean.loc[idx, 'Item']
         if item in MENU_PRICES:
             df_clean.loc[idx, 'Price Per Unit'] = MENU_PRICES[item]
             print(f"  Fixed price for {item} at row {idx}")
+            prices_filled += 1
     
     # Validate prices against menu
+    prices_corrected = 0
     for idx, row in df_clean.iterrows():
         item = row['Item']
         price = row['Price Per Unit']
@@ -173,6 +211,11 @@ def clean_data(df):
             if price != MENU_PRICES[item]:
                 print(f"  Correcting price for {item} from ${price} to ${MENU_PRICES[item]} at row {idx}")
                 df_clean.loc[idx, 'Price Per Unit'] = MENU_PRICES[item]
+                prices_corrected += 1
+    
+    cleaning_report['operations_performed'].append('Filled missing prices and corrected invalid prices using menu')
+    cleaning_report['values_imputed']['missing_prices_filled'] = prices_filled
+    cleaning_report['price_corrections'] = prices_corrected
     
     # 5. Recalculate Total Spent for all rows
     print("\n5. Recalculating Total Spent for all rows...")
@@ -180,6 +223,9 @@ def clean_data(df):
     # Since majority of prices and quantities have been corrected, recalculate all totals
     df_clean['Total Spent'] = df_clean['Quantity'] * df_clean['Price Per Unit']
     print(f"Recalculated Total Spent for all {len(df_clean)} rows")
+    
+    cleaning_report['operations_performed'].append('Recalculated Total Spent for all rows')
+    cleaning_report['total_calculations_fixed'] = len(df_clean)
     
     # 6. Clean Payment Method
     print("\n6. Cleaning Payment Method...")
@@ -190,6 +236,9 @@ def clean_data(df):
         most_common_payment = df_clean['Payment Method'].mode()[0] if len(df_clean['Payment Method'].mode()) > 0 else 'Cash'
         df_clean['Payment Method'] = df_clean['Payment Method'].fillna(most_common_payment)
         print(f"Filled missing payment methods with '{most_common_payment}'")
+        
+        cleaning_report['operations_performed'].append(f'Filled missing payment methods with mode ({most_common_payment})')
+        cleaning_report['values_imputed']['payment_methods_filled'] = missing_payment
     
     # 7. Clean Location
     print("\n7. Cleaning Location...")
@@ -200,6 +249,9 @@ def clean_data(df):
         most_common_location = df_clean['Location'].mode()[0] if len(df_clean['Location'].mode()) > 0 else 'In-store'
         df_clean['Location'] = df_clean['Location'].fillna(most_common_location)
         print(f"Filled missing locations with '{most_common_location}'")
+        
+        cleaning_report['operations_performed'].append(f'Filled missing locations with mode ({most_common_location})')
+        cleaning_report['values_imputed']['locations_filled'] = missing_location
     
     # 8. Clean Transaction Date
     print("\n8. Cleaning Transaction Date...")
@@ -210,17 +262,84 @@ def clean_data(df):
         rows_before = len(df_clean)
         df_clean = df_clean.dropna(subset=['Transaction Date'])
         rows_after = len(df_clean)
-        print(f"Removed {rows_before - rows_after} rows with missing dates")
+        dates_removed = rows_before - rows_after
+        print(f"Removed {dates_removed} rows with missing dates")
+        
+        cleaning_report['operations_performed'].append('Removed rows with missing transaction dates')
+        cleaning_report['rows_removed_by_operation']['missing_transaction_dates'] = dates_removed
     
     # Validate date format
     try:
         df_clean['Transaction Date'] = pd.to_datetime(df_clean['Transaction Date'])
         print("Successfully converted dates to datetime format")
+        cleaning_report['operations_performed'].append('Successfully converted dates to datetime format')
     except:
         print("Some dates may have formatting issues - will keep as text for manual review")
+        cleaning_report['operations_performed'].append('Date conversion failed - kept as text for manual review')
+    
+    # Finalize cleaning report
+    cleaning_report['final_rows'] = len(df_clean)
+    cleaning_report['total_rows_removed'] = cleaning_report['initial_rows'] - len(df_clean)
+    cleaning_report['data_retention_rate'] = (len(df_clean) / cleaning_report['initial_rows']) * 100
     
     print(f"\nCleaning complete! Final dataset: {len(df_clean)} rows")
-    return df_clean
+    return df_clean, cleaning_report
+
+def generate_cleaning_report(cleaning_report):
+    """Generate a detailed data cleaning report"""
+    print("\n" + "="*60)
+    print("DETAILED DATA CLEANING REPORT")
+    print("="*60)
+    
+    # Overview
+    print(f"\n[OVERVIEW] CLEANING SUMMARY")
+    print("-" * 30)
+    print(f"Initial rows: {cleaning_report['initial_rows']:,}")
+    print(f"Final rows: {cleaning_report['final_rows']:,}")
+    print(f"Total rows removed: {cleaning_report['total_rows_removed']:,}")
+    print(f"Data retention rate: {cleaning_report['data_retention_rate']:.2f}%")
+    
+    # Operations performed
+    print(f"\n[OPERATIONS] CLEANING STEPS PERFORMED")
+    print("-" * 40)
+    for i, operation in enumerate(cleaning_report['operations_performed'], 1):
+        print(f"{i:2d}. {operation}")
+    
+    # Rows removed by operation
+    if cleaning_report['rows_removed_by_operation']:
+        print(f"\n[REMOVED] ROWS REMOVED BY OPERATION")
+        print("-" * 35)
+        total_removed = 0
+        for operation, count in cleaning_report['rows_removed_by_operation'].items():
+            if count > 0:
+                print(f"• {operation.replace('_', ' ').title()}: {count:,} rows")
+                total_removed += count
+        print(f"Total removed: {total_removed:,} rows")
+    
+    # Values imputed/fixed
+    if cleaning_report['values_imputed']:
+        print(f"\n[FIXED] VALUES IMPUTED/FIXED")
+        print("-" * 25)
+        for operation, count in cleaning_report['values_imputed'].items():
+            if count > 0:
+                print(f"• {operation.replace('_', ' ').title()}: {count:,} values")
+    
+    # Price corrections
+    if cleaning_report['price_corrections'] > 0:
+        print(f"\n[PRICES] PRICE CORRECTIONS")
+        print("-" * 20)
+        print(f"• Incorrect prices corrected: {cleaning_report['price_corrections']:,}")
+    
+    # Total calculations
+    if cleaning_report['total_calculations_fixed'] > 0:
+        print(f"\n[CALCULATIONS] TOTAL SPENT UPDATES")
+        print("-" * 22)
+        print(f"• Total Spent recalculated for: {cleaning_report['total_calculations_fixed']:,} rows")
+    
+    print(f"\n[SUCCESS] CLEANING COMPLETED")
+    print("-" * 18)
+    print("* All data cleaning operations completed successfully!")
+    print("* Dataset is now ready for analysis and migration")
 
 def generate_summary_report(df_original, df_clean):
     """Generate a summary report of the cleaning process"""
@@ -240,7 +359,7 @@ def generate_summary_report(df_original, df_clean):
         print(f"  {col}: {count} missing values ({count/len(df_clean)*100:.1f}%)")
     
     if final_missing.sum() == 0:
-        print("✅ No missing values in final dataset!")
+        print("[SUCCESS] No missing values in final dataset!")
     
     # Show unique values for categorical columns
     print("\nFinal unique values:")
@@ -259,7 +378,10 @@ def main():
     missing_report, calc_errors = perform_eda(df)
     
     # Clean data
-    df_clean = clean_data(df)
+    df_clean, cleaning_report = clean_data(df)
+    
+    # Generate detailed cleaning report
+    generate_cleaning_report(cleaning_report)
     
     # Generate summary
     generate_summary_report(df, df_clean)
@@ -272,18 +394,43 @@ def main():
     # Save main cleaned dataset
     clean_filename = 'cleaned_cafe_sales.csv'
     df_clean.to_csv(clean_filename, index=False)
-    print(f"✅ Cleaned data saved to: {clean_filename}")
+    print(f"[SAVED] Cleaned data saved to: {clean_filename}")
     
     # Save EDA report
     eda_filename = 'eda_report_corrected.csv'
     missing_report.to_csv(eda_filename, index=False)
-    print(f"✅ Corrected EDA report saved to: {eda_filename}")
+    print(f"[SAVED] Corrected EDA report saved to: {eda_filename}")
+    
+    # Save cleaning report as JSON
+    import json
+    
+    # Convert numpy types to native Python types for JSON serialization
+    def convert_numpy_types(obj):
+        """Convert numpy types to native Python types for JSON serialization"""
+        if isinstance(obj, dict):
+            return {key: convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_numpy_types(item) for item in obj]
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return obj
+    
+    cleaned_report = convert_numpy_types(cleaning_report)
+    cleaning_report_filename = 'data_cleaning_report.json'
+    with open(cleaning_report_filename, 'w') as f:
+        json.dump(cleaned_report, f, indent=2)
+    print(f"[SAVED] Detailed cleaning report saved to: {cleaning_report_filename}")
     
     # Show sample of cleaned data
     print(f"\nSample of cleaned data (first 5 rows):")
     print(df_clean.head())
     
-    print(f"\n🎉 Data cleaning completed successfully!")
+    print(f"\n[COMPLETE] Data cleaning completed successfully!")
     print(f"Final dataset contains {len(df_clean)} clean records")
 
 if __name__ == "__main__":
