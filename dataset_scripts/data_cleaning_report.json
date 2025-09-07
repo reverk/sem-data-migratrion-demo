@@ -27,6 +27,22 @@
     "payment_methods_filled": 3157,
     "locations_filled": 3936
   },
+  "imputation_values_used": {
+    "invalid_quantities": 1,
+    "missing_prices": {
+      "Cake": 3.0,
+      "Sandwich": 4.0,
+      "Salad": 5.0,
+      "Tea": 1.5,
+      "Juice": 3.0,
+      "Cookie": 1.0,
+      "Smoothie": 4.0,
+      "Coffee": 2.0
+    },
+    "corrected_prices": {},
+    "payment_method": "Digital Wallet",
+    "location": "Takeaway"
+  },
   "price_corrections": 0,
   "total_calculations_fixed": 9946,
   "final_rows": 9489,

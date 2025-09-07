@@ -1,1 +1,2 @@
-dataset_scripts
+dataset_scripts/cleaned_cafe_sales.csv
+dataset_scripts/dirty_cafe_sales.csv

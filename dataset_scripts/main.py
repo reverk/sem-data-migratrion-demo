@@ -101,6 +101,7 @@ def clean_data(df):
         'operations_performed': [],
         'rows_removed_by_operation': {},
         'values_imputed': {},
+        'imputation_values_used': {},
         'price_corrections': 0,
         'total_calculations_fixed': 0
     }
@@ -182,11 +183,13 @@ def clean_data(df):
     if invalid_qty_count > 0:
         print(f"Found {invalid_qty_count} invalid quantities")
         # Set invalid quantities to 1 (most common case)
-        df_clean.loc[invalid_qty, 'Quantity'] = 1
-        print("Set invalid quantities to 1")
+        imputation_value = 1
+        df_clean.loc[invalid_qty, 'Quantity'] = imputation_value
+        print(f"Set invalid quantities to {imputation_value}")
         
         cleaning_report['operations_performed'].append('Fixed invalid quantities by setting to 1')
         cleaning_report['values_imputed']['invalid_quantities_fixed'] = invalid_qty_count
+        cleaning_report['imputation_values_used']['invalid_quantities'] = imputation_value
     
     # Clean Price Per Unit using menu prices
     print("Cleaning Price Per Unit...")
@@ -195,15 +198,21 @@ def clean_data(df):
     # Fill missing prices from menu
     missing_price_mask = df_clean['Price Per Unit'].isnull()
     prices_filled = 0
+    price_imputation_details = {}
     for idx in df_clean[missing_price_mask].index:
         item = df_clean.loc[idx, 'Item']
         if item in MENU_PRICES:
-            df_clean.loc[idx, 'Price Per Unit'] = MENU_PRICES[item]
+            menu_price = MENU_PRICES[item]
+            df_clean.loc[idx, 'Price Per Unit'] = menu_price
             print(f"  Fixed price for {item} at row {idx}")
             prices_filled += 1
+            # Track imputation values used
+            if item not in price_imputation_details:
+                price_imputation_details[item] = menu_price
     
     # Validate prices against menu
     prices_corrected = 0
+    price_correction_details = {}
     for idx, row in df_clean.iterrows():
         item = row['Item']
         price = row['Price Per Unit']
@@ -212,10 +221,15 @@ def clean_data(df):
                 print(f"  Correcting price for {item} from ${price} to ${MENU_PRICES[item]} at row {idx}")
                 df_clean.loc[idx, 'Price Per Unit'] = MENU_PRICES[item]
                 prices_corrected += 1
+                # Track correction values used
+                if item not in price_correction_details:
+                    price_correction_details[item] = MENU_PRICES[item]
     
     cleaning_report['operations_performed'].append('Filled missing prices and corrected invalid prices using menu')
     cleaning_report['values_imputed']['missing_prices_filled'] = prices_filled
     cleaning_report['price_corrections'] = prices_corrected
+    cleaning_report['imputation_values_used']['missing_prices'] = price_imputation_details
+    cleaning_report['imputation_values_used']['corrected_prices'] = price_correction_details
     
     # 5. Recalculate Total Spent for all rows
     print("\n5. Recalculating Total Spent for all rows...")
@@ -239,6 +253,7 @@ def clean_data(df):
         
         cleaning_report['operations_performed'].append(f'Filled missing payment methods with mode ({most_common_payment})')
         cleaning_report['values_imputed']['payment_methods_filled'] = missing_payment
+        cleaning_report['imputation_values_used']['payment_method'] = most_common_payment
     
     # 7. Clean Location
     print("\n7. Cleaning Location...")
@@ -252,6 +267,7 @@ def clean_data(df):
         
         cleaning_report['operations_performed'].append(f'Filled missing locations with mode ({most_common_location})')
         cleaning_report['values_imputed']['locations_filled'] = missing_location
+        cleaning_report['imputation_values_used']['location'] = most_common_location
     
     # 8. Clean Transaction Date
     print("\n8. Cleaning Transaction Date...")
@@ -335,6 +351,18 @@ def generate_cleaning_report(cleaning_report):
         print(f"\n[CALCULATIONS] TOTAL SPENT UPDATES")
         print("-" * 22)
         print(f"• Total Spent recalculated for: {cleaning_report['total_calculations_fixed']:,} rows")
+    
+    # Imputation values used
+    if cleaning_report['imputation_values_used']:
+        print(f"\n[IMPUTATION] VALUES USED FOR IMPUTATION")
+        print("-" * 35)
+        for field, value in cleaning_report['imputation_values_used'].items():
+            if isinstance(value, dict):
+                print(f"• {field.replace('_', ' ').title()}:")
+                for item, item_value in value.items():
+                    print(f"  - {item}: ${item_value}")
+            else:
+                print(f"• {field.replace('_', ' ').title()}: {value}")
     
     print(f"\n[SUCCESS] CLEANING COMPLETED")
     print("-" * 18)
